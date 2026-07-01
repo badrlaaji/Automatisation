@@ -1,0 +1,75 @@
+{
+  "process": "ehei_admission",
+  "name": "EHEI Admission Process",
+  "steps": [
+    {
+      "id": "start",
+      "type": "start",
+      "name": "Start Admission",
+      "next": "registration"
+    },
+    {
+      "id": "registration",
+      "type": "task",
+      "name": "Fill Registration Form",
+      "next": "documents"
+    },
+    {
+      "id": "documents",
+      "type": "task",
+      "name": "Submit Documents (BAC, CIN, Transcripts)",
+      "next": "verify_documents"
+    },
+    {
+      "id": "verify_documents",
+      "type": "decision",
+      "name": "Verify Documents",
+      "condition": "documents_valid",
+      "trueNext": "payment",
+      "falseNext": "start"
+    },
+    {
+      "id": "payment",
+      "type": "task",
+      "name": "Pay Registration Fee (3000 DH)",
+      "next": "admission_test"
+    },
+    {
+      "id": "admission_test",
+      "type": "task",
+      "name": "Take Admission Test",
+      "next": "evaluate_test"
+    },
+    {
+      "id": "evaluate_test",
+      "type": "decision",
+      "name": "Evaluate Test Score",
+      "condition": "score >= 12",
+      "trueNext": "accepted",
+      "falseNext": "rejected"
+    },
+    {
+      "id": "accepted",
+      "type": "task",
+      "name": "Send Acceptance Letter",
+      "next": "student_record"
+    },
+    {
+      "id": "student_record",
+      "type": "task",
+      "name": "Create Student Record",
+      "next": "end"
+    },
+    {
+      "id": "rejected",
+      "type": "task",
+      "name": "Send Rejection Notice",
+      "next": "end"
+    },
+    {
+      "id": "end",
+      "type": "end",
+      "name": "End Process"
+    }
+  ]
+}
