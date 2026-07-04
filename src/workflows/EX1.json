@@ -1,0 +1,19 @@
+{
+  "steps": {
+    "start": {
+      "type": "start",
+      "next": "register"
+    },
+    "register": {
+      "type": "task",
+      "next": "send_email"
+    },
+    "send_email": {
+      "type": "task",
+      "next": "end"
+    },
+    "end": {
+      "type": "end"
+    }
+  }
+}
