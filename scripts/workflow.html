@@ -1,0 +1,20 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>Workflow Diagram</title>
+    <script src="https://unpkg.com/mermaid@10/dist/mermaid.min.js"></script>
+    <style>body{font-family:system-ui,Segoe UI,Roboto,Helvetica,Arial,sans-serif;margin:20px}</style>
+  </head>
+  <body>
+    <h2>Workflow Diagram</h2>
+    <div class="mermaid">
+stateDiagram-v2
+    start --> register
+    register --> send_email
+    send_email --> end
+    end --> [*]
+    </div>
+    <script>mermaid.initialize({ startOnLoad: true });</script>
+  </body>
+</html>
