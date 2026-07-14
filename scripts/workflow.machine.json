@@ -1,0 +1,10 @@
+{
+  "id": "workflow",
+  "initial": "start",
+  "states": {
+    "start": { "on": { "NEXT": "register" } },
+    "register": { "on": { "NEXT": "send_email" } },
+    "send_email": { "on": { "NEXT": "end" } },
+    "end": { "type": "final" }
+  }
+}
