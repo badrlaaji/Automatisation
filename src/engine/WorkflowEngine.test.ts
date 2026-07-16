@@ -18,8 +18,8 @@ describe("WorkflowEngine", () => {
     });
   });
 
-  describe("buildGraph", () => {
-    it("builds a graph from a workflow definition", async () => {
+  describe("saveWorkflow / loadWorkflow", () => {
+    it("saves and loads a workflow definition", async () => {
       const { engine } = createEngine();
       const workflow = createLinearWorkflow();
 
@@ -40,6 +40,7 @@ describe("WorkflowEngine", () => {
 
       expect(process.status).toBe("RUNNING");
       expect(process.workflowId).toBe("user_registration");
+      expect(process.currentNodeId).toBe("start");
 
       const persistedProcess = await processRepository.find(process.id);
       const persistedToken = await tokenRepository.findByProcessId(process.id);
@@ -57,12 +58,32 @@ describe("WorkflowEngine", () => {
   });
 
   describe("executeProcess", () => {
-    it("runs all steps and completes the process", async () => {
+    it("processes through the workflow, stopping at each task", async () => {
       const { engine, processRepository, tokenRepository } = createEngine();
       await engine.saveWorkflow(createLinearWorkflow());
 
       const { process } = await engine.startProcess("user_registration");
-      await engine.executeProcess(process.id);
+
+      // First call: process StartEvent + first Task → WAITING
+      let result = await engine.executeProcess(process.id);
+      expect(result.status).toBe("WAITING");
+      expect(result.currentNodeId).toBe("send_email");
+
+      let token = await tokenRepository.findByProcessId(process.id);
+      expect(token?.currentStep).toBe("send_email");
+
+      // Second call: process second Task → WAITING
+      result = await engine.executeProcess(process.id);
+      expect(result.status).toBe("WAITING");
+      expect(result.currentNodeId).toBe("end");
+
+      token = await tokenRepository.findByProcessId(process.id);
+      expect(token?.currentStep).toBe("end");
+
+      // Third call: process EndEvent → COMPLETED
+      result = await engine.executeProcess(process.id);
+      expect(result.status).toBe("COMPLETED");
+      expect(result.currentNodeId).toBe("end");
 
       const finalProcess = await processRepository.find(process.id);
       const finalToken = await tokenRepository.findByProcessId(process.id);
@@ -76,7 +97,7 @@ describe("WorkflowEngine", () => {
       await engine.saveWorkflow(createLinearWorkflow());
 
       const { process } = await engine.startProcess("user_registration");
-      await engine.executeProcess(process.id, 2);
+      await engine.executeProcess(process.id);
 
       const token = await tokenRepository.findByProcessId(process.id);
       expect(token?.currentStep).toBe("send_email");
@@ -87,8 +108,12 @@ describe("WorkflowEngine", () => {
       await engine.saveWorkflow(createLinearWorkflow());
 
       const { process } = await engine.startProcess("user_registration");
-      await engine.executeProcess(process.id);
-      await engine.executeProcess(process.id);
+      await engine.executeProcess(process.id); // WAITING
+      await engine.executeProcess(process.id); // WAITING
+      await engine.executeProcess(process.id); // COMPLETED
+
+      const result = await engine.executeProcess(process.id);
+      expect(result.status).toBe("COMPLETED");
 
       const finalProcess = await processRepository.find(process.id);
       expect(finalProcess?.status).toBe("COMPLETED");
@@ -101,7 +126,8 @@ describe("WorkflowEngine", () => {
       await engine.saveWorkflow(createLinearWorkflow());
 
       const { process } = await engine.startProcess("user_registration");
-      await engine.executeProcess(process.id, 2);
+
+      await engine.executeProcess(process.id);
 
       const midProcess = await processRepository.find(process.id);
       const midToken = await tokenRepository.findByProcessId(process.id);
@@ -114,6 +140,35 @@ describe("WorkflowEngine", () => {
       const finalToken = await tokenRepository.findByProcessId(process.id);
       expect(finalProcess?.status).toBe("COMPLETED");
       expect(finalToken?.currentStep).toBe("end");
+    });
+
+    it("supports multiple processes running in parallel independently", async () => {
+      const { engine, processRepository, tokenRepository } = createEngine();
+      await engine.saveWorkflow(createLinearWorkflow());
+
+      const { process: processA } = await engine.startProcess("user_registration");
+      const { process: processB } = await engine.startProcess("user_registration");
+
+      await engine.executeProcess(processA.id);
+      await engine.executeProcess(processB.id);
+
+      const tokenA = await tokenRepository.findByProcessId(processA.id);
+      const tokenB = await tokenRepository.findByProcessId(processB.id);
+
+      expect(tokenA?.currentStep).toBe("send_email");
+      expect(tokenB?.currentStep).toBe("send_email");
+
+      await engine.resumeAllRunning();
+
+      const finalA = await processRepository.find(processA.id);
+      const finalB = await processRepository.find(processB.id);
+      const finalTokenA = await tokenRepository.findByProcessId(processA.id);
+      const finalTokenB = await tokenRepository.findByProcessId(processB.id);
+
+      expect(finalA?.status).toBe("COMPLETED");
+      expect(finalB?.status).toBe("COMPLETED");
+      expect(finalTokenA?.currentStep).toBe("end");
+      expect(finalTokenB?.currentStep).toBe("end");
     });
   });
 });

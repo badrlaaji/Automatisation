@@ -1,0 +1,8 @@
+{
+  "steps": {
+    "start": { "type": "start", "next": "step1" },
+    "step1": { "type": "task", "next": "step2" },
+    "step2": { "type": "task", "next": "end" },
+    "end": { "type": "end" }
+  }
+}

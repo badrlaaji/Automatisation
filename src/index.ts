@@ -1,6 +1,9 @@
 export { WorkflowEngine } from "./engine/WorkflowEngine";
+export type { ExecutionResult, ExecutionStatus } from "./engine/WorkflowEngine";
+export { executionMachine } from "./engine/XStateWorkflow";
+export type { ExecutionMachineState } from "./engine/XStateWorkflow";
 
-export type { Workflow, WorkflowDefinition, WorkflowStep, StepType } from "./entities/Workflow";
+export type { Workflow, WorkflowDefinition, WorkflowStep, StepType, NodeType, Node, SequenceFlow } from "./entities/Workflow";
 export type { ProcessInstance, ProcessStatus } from "./entities/ProcessInstance";
 export type { Token } from "./entities/Token";
 

@@ -1,36 +1,15 @@
-// @ts-nocheck
+/// <reference types="node" />
 import fs from "fs";
 import path from "path";
-import { createMachine, interpret } from "xstate";
-// Try to start the XState inspector (if installed) so you can use the Stately visualizer
-try {
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
-  const inspectPkg = require("@xstate/inspect");
-  if (inspectPkg && typeof inspectPkg.inspect === "function") {
-    inspectPkg.inspect({ iframe: false });
-    console.log("@xstate/inspect started — open https://stately.ai/viz to connect.");
-  }
-} catch (err) {
-  // ignore if not installed
-}
+import { interpret } from "xstate";
+import { buildMachine } from "../src/engine/XStateWorkflow";
+import { WorkflowDefinition } from "../src/entities/Workflow";
 
-const wfPath = path.join(__dirname, "..", "src", "workflows", "EX1.json");
-const raw = fs.readFileSync(wfPath, "utf-8");
-const wf = JSON.parse(raw);
+const workflowFile = process.argv[2] ?? path.join(process.cwd(), "src", "workflows", "EX1.json");
+const raw = fs.readFileSync(workflowFile, "utf-8");
+const workflow = JSON.parse(raw) as WorkflowDefinition;
 
-const states: Record<string, any> = {};
-for (const [id, step] of Object.entries(wf.steps)) {
-  if ((step as any).type === "end") {
-    states[id] = { type: "final" };
-  } else {
-    const next = (step as any).next;
-    states[id] = { on: next ? { NEXT: next } : {} };
-  }
-}
-
-const machineSpec = JSON.parse(JSON.stringify({ id: "workflow", initial: "start", states }));
-const machine = createMachine(machineSpec as any);
-
+const machine = buildMachine(workflow);
 const service = interpret(machine);
 let currentState: any = null;
 service.subscribe((s) => {
@@ -59,11 +38,11 @@ process.on("SIGINT", () => {
 
 // Generate a Mermaid state diagram for visualization
 const mermaidLines = ["stateDiagram-v2"];
-for (const [id, step] of Object.entries(wf.steps)) {
-  const next = (step as any).next;
+for (const [id, step] of Object.entries(workflow.steps)) {
+  const next = step.next;
   if (next) {
     mermaidLines.push(`    ${id} --> ${next}`);
-  } else if ((step as any).type === "end") {
+  } else if (step.type === "end") {
     mermaidLines.push(`    ${id} --> [*]`);
   }
 }

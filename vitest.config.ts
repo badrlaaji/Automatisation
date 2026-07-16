@@ -10,5 +10,6 @@ export default defineConfig({
       DATABASE_URL: "file:../data/test.db",
     },
     fileParallelism: false,
+    hookTimeout: 30000,
   },
 });

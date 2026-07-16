@@ -30,6 +30,7 @@ model Token {
   id          Int    @id @default(autoincrement())
   processId   Int    @map("process_id")
   currentStep String @map("current_step")
+  snapshot    Json?
 
   process ProcessInstance @relation(fields: [processId], references: [id])
 

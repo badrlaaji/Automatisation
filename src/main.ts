@@ -46,8 +46,8 @@ async function runCrashResumeDemo(
   const workflow = await seedWorkflow(engine);
   const { process } = await engine.startProcess(workflow.id);
 
-  console.log("Running 2 steps then simulating crash...\n");
-  await engine.executeProcess(process.id, 2);
+  console.log("Running first steps then simulating crash...\n");
+  await engine.executeProcess(process.id);
 
   console.log("\nState saved in database:");
   await printState(processRepository, tokenRepository, process.id);

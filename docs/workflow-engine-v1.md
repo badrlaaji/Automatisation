@@ -58,31 +58,35 @@ Il contient :
 
 Le WorkflowEngine constitue le cœur du système.
 
+Depuis la version XState, il utilise une machine d'état générée dynamiquement à partir du JSON du workflow pour piloter l'exécution.
+
 Ses responsabilités :
 
 * charger le workflow ;
-* construire le graphe d'exécution ;
-* trouver le nœud de départ ;
-* exécuter chaque étape ;
-* déterminer l'étape suivante ;
-* arrêter le processus.
+* construire la machine XState dynamique à partir des steps JSON ;
+* créer un acteur par process instance ;
+* persister le snapshot XState dans la base après chaque transition ;
+* reprendre un process après crash en rechargeant l'acteur depuis le snapshot ;
+* exécuter chaque étape et déterminer l'étape suivante automatiquement.
 
 Pseudo-algorithme :
 
 ```text
 charger workflow
     ↓
-trouver start
+construire machine XState
     ↓
-executer étape
+créer acteur processeur
     ↓
-chercher next
+état initial: start
     ↓
-executer étape suivante
+envoyer événement NEXT
     ↓
-...
+transitionner vers l'état suivant
     ↓
-end
+persister le snapshot
+    ↓
+si état final, compléter le process
 ```
 
 ---
