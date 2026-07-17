@@ -27,6 +27,18 @@ export class TokenRepository {
     });
   }
 
+  async find(id: number): Promise<Token | null> {
+    const row = (await prisma.token.findUnique({ where: { id } })) as PrismaToken | null;
+    if (!row) return null;
+
+    return {
+      id: row.id,
+      processId: row.processId,
+      currentStep: row.currentStep,
+      snapshot: row.snapshot ?? undefined,
+    };
+  }
+
   async findByProcessId(processId: number): Promise<Token | null> {
     const row = (await prisma.token.findFirst({ where: { processId } })) as PrismaToken | null;
     if (!row) return null;

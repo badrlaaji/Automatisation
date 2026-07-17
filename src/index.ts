@@ -12,3 +12,5 @@ export { ProcessRepository } from "./repositories/ProcessRepository";
 export { TokenRepository } from "./repositories/TokenRepository";
 
 export { prisma } from "./database/database";
+
+export { toMermaid, toDot } from "./visualize/workflow-visualizer";

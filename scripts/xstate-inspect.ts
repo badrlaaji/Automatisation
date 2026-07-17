@@ -1,51 +1,42 @@
-/// <reference types="node" />
 import fs from "fs";
 import path from "path";
-import { interpret } from "xstate";
-import { buildMachine } from "../src/engine/XStateWorkflow";
+import { createActor } from "xstate";
+import { executionMachine } from "../src/engine/XStateWorkflow";
+import { toMermaid, toDot } from "../src/visualize/workflow-visualizer";
 import { WorkflowDefinition } from "../src/entities/Workflow";
 
 const workflowFile = process.argv[2] ?? path.join(process.cwd(), "src", "workflows", "EX1.json");
 const raw = fs.readFileSync(workflowFile, "utf-8");
 const workflow = JSON.parse(raw) as WorkflowDefinition;
 
-const machine = buildMachine(workflow);
-const service = interpret(machine);
-let currentState: any = null;
-service.subscribe((s) => {
-  currentState = s;
-  console.log("State:", s.value);
-});
-service.start();
+// Generate Mermaid diagram
+const mermaid = toMermaid(workflow);
+const mmdPath = path.join(__dirname, "workflow.mmd");
+fs.writeFileSync(mmdPath, mermaid, "utf-8");
+console.log(`Wrote Mermaid diagram → ${mmdPath}`);
+console.log("Open in a Mermaid viewer (e.g. mermaid.live) to visualize.\n");
 
-// Simulate advancing the token every 1s until final
-const advance = setInterval(() => {
-  if (currentState && currentState.done) {
-    console.log("Workflow finished.");
-    clearInterval(advance);
-    process.exit(0);
-  } else {
-    service.send({ type: "NEXT" });
-  }
-}, 1000);
+// Generate Graphviz DOT diagram
+const dot = toDot(workflow);
+const dotPath = path.join(__dirname, "workflow.dot");
+fs.writeFileSync(dotPath, dot, "utf-8");
+console.log(`Wrote Graphviz DOT → ${dotPath}`);
+console.log("Render with: dot -Tpng scripts/workflow.dot -o scripts/workflow.png\n");
 
-// Keep process alive for inspector connection
-process.on("SIGINT", () => {
-  console.log("Stopping...");
-  service.stop();
-  process.exit(0);
-});
+// Demonstrate the XState execution lifecycle actor
+const actor = createActor(executionMachine);
+actor.start();
+console.log("XState lifecycle states:");
+console.log(`  ${actor.getSnapshot().value}`);
 
-// Generate a Mermaid state diagram for visualization
-const mermaidLines = ["stateDiagram-v2"];
-for (const [id, step] of Object.entries(workflow.steps)) {
-  const next = step.next;
-  if (next) {
-    mermaidLines.push(`    ${id} --> ${next}`);
-  } else if (step.type === "end") {
-    mermaidLines.push(`    ${id} --> [*]`);
-  }
-}
-const mermaid = mermaidLines.join("\n");
-fs.writeFileSync(path.join(__dirname, "workflow.mmd"), mermaid, "utf-8");
-console.log("Wrote Mermaid diagram to scripts/workflow.mmd — open in a Mermaid viewer to visualize.");
+actor.send({ type: "START" });
+console.log(`  ${actor.getSnapshot().value}`);
+
+actor.send({ type: "TASK_ENCOUNTERED" });
+console.log(`  ${actor.getSnapshot().value}`);
+
+actor.send({ type: "TASK_COMPLETED" });
+console.log(`  ${actor.getSnapshot().value}`);
+
+actor.send({ type: "COMPLETE" });
+console.log(`  ${actor.getSnapshot().value} (done)`);

@@ -31,7 +31,12 @@ async function runFullDemo(engine: WorkflowEngine, processRepository: ProcessRep
   await printState(processRepository, tokenRepository, process.id);
   console.log();
 
-  await engine.executeProcess(process.id);
+  let result = await engine.executeProcess(process.id);
+  while (result.status === "WAITING") {
+    await engine.completeTask(process.id);
+    result = await engine.executeProcess(process.id);
+  }
+
   console.log("\nFinal state:");
   await printState(processRepository, tokenRepository, process.id);
 }

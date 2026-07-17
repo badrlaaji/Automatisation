@@ -72,6 +72,9 @@ describe("WorkflowEngine", () => {
       let token = await tokenRepository.findByProcessId(process.id);
       expect(token?.currentStep).toBe("send_email");
 
+      // External caller signals task completed
+      await engine.completeTask(process.id);
+
       // Second call: process second Task → WAITING
       result = await engine.executeProcess(process.id);
       expect(result.status).toBe("WAITING");
@@ -79,6 +82,9 @@ describe("WorkflowEngine", () => {
 
       token = await tokenRepository.findByProcessId(process.id);
       expect(token?.currentStep).toBe("end");
+
+      // External caller signals task completed
+      await engine.completeTask(process.id);
 
       // Third call: process EndEvent → COMPLETED
       result = await engine.executeProcess(process.id);
@@ -109,7 +115,9 @@ describe("WorkflowEngine", () => {
 
       const { process } = await engine.startProcess("user_registration");
       await engine.executeProcess(process.id); // WAITING
+      await engine.completeTask(process.id);
       await engine.executeProcess(process.id); // WAITING
+      await engine.completeTask(process.id);
       await engine.executeProcess(process.id); // COMPLETED
 
       const result = await engine.executeProcess(process.id);

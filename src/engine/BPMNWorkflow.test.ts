@@ -28,6 +28,21 @@ const startTaskEnd: WorkflowDefinition = {
   steps: {},
 };
 
+const startTaskTaskEnd: WorkflowDefinition = {
+  nodes: [
+    { id: "start", type: "StartEvent", outgoing: [{ id: "s1", source: "start", target: "task1" }] },
+    { id: "task1", type: "Task", outgoing: [{ id: "s2", source: "task1", target: "task2" }] },
+    { id: "task2", type: "Task", outgoing: [{ id: "s3", source: "task2", target: "end" }] },
+    { id: "end", type: "EndEvent", outgoing: [] },
+  ],
+  sequenceFlows: [
+    { id: "s1", source: "start", target: "task1" },
+    { id: "s2", source: "task1", target: "task2" },
+    { id: "s3", source: "task2", target: "end" },
+  ],
+  steps: {},
+};
+
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
@@ -72,12 +87,53 @@ describe("BPMN workflow execution", () => {
       expect(midToken?.currentStep).toBe("end");
 
       // ---- external caller signals task completed ----
-      // executeProcess restores the lifecycle machine from Waiting,
-      // sends TASK_COMPLETED internally (Waiting → Executing),
-      // then the interpret loop processes the EndEvent.
+      await engine.completeTask(process.id);
+
+      // ---- second execution: EndEvent → COMPLETED ----
       const result2 = await engine.executeProcess(process.id);
       expect(result2.status).toBe("COMPLETED");
       expect(result2.currentNodeId).toBe("end");
+
+      const p = await processRepository.find(process.id);
+      const t = await tokenRepository.findByProcessId(process.id);
+      expect(p?.status).toBe("COMPLETED");
+      expect(t?.currentStep).toBe("end");
+    });
+  });
+
+  describe("Workflow #3: StartEvent → Task → Task → EndEvent", () => {
+    it("pauses at each Task and completes after two resume cycles", async () => {
+      const { engine, processRepository, tokenRepository } = createEngine();
+      await engine.saveWorkflow({ id: "wf3", name: "Start Task Task End", definition: startTaskTaskEnd });
+
+      const { process } = await engine.startProcess("wf3");
+
+      // ---- first execution: StartEvent + first Task → WAITING ----
+      const result1 = await engine.executeProcess(process.id);
+      expect(result1.status).toBe("WAITING");
+      expect(result1.currentNodeId).toBe("task2");
+
+      let midToken = await tokenRepository.findByProcessId(process.id);
+      expect(midToken?.currentStep).toBe("task2");
+
+      // ---- complete first task ----
+      await engine.completeTask(process.id);
+
+      // ---- second execution: second Task → WAITING ----
+      const result2 = await engine.executeProcess(process.id);
+      expect(result2.status).toBe("WAITING");
+      expect(result2.currentNodeId).toBe("end");
+
+      midToken = await tokenRepository.findByProcessId(process.id);
+      expect(midToken?.currentStep).toBe("end");
+
+      // ---- complete second task ----
+      await engine.completeTask(process.id);
+
+      // ---- third execution: EndEvent → COMPLETED ----
+      const result3 = await engine.executeProcess(process.id);
+      expect(result3.status).toBe("COMPLETED");
+      expect(result3.currentNodeId).toBe("end");
 
       const p = await processRepository.find(process.id);
       const t = await tokenRepository.findByProcessId(process.id);

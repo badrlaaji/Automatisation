@@ -54,10 +54,38 @@ export class WorkflowEngine {
     return { process: { ...process, currentNodeId: startNodeId }, token };
   }
 
+  async completeTask(processId: number, tokenId?: number): Promise<void> {
+    const token = tokenId
+      ? await this.tokenRepository.find(tokenId)
+      : await this.tokenRepository.findByProcessId(processId);
+
+    if (!token) {
+      throw new Error(`Token not found for process: ${processId}`);
+    }
+    if (token.processId !== processId) {
+      throw new Error(`Token ${token.id} does not belong to process ${processId}`);
+    }
+
+    const actor = createActor(
+      executionMachine,
+      token.snapshot ? { state: token.snapshot as any } : undefined
+    );
+    actor.start();
+
+    const state = actor.getSnapshot().value as ExecutionMachineState;
+    if (state !== "Waiting") {
+      throw new Error(`Cannot complete task: process ${processId} is in state "${state}", expected "Waiting"`);
+    }
+
+    actor.send({ type: "TASK_COMPLETED", tokenId: token.id });
+    await this.tokenRepository.update(token.id, token.currentStep, actor.getPersistedSnapshot());
+  }
+
   async startAndComplete(workflowId: string): Promise<void> {
     const { process } = await this.startProcess(workflowId);
     let result = await this.executeProcess(process.id);
     while (result.status === "WAITING") {
+      await this.completeTask(process.id);
       result = await this.executeProcess(process.id);
     }
   }
@@ -79,7 +107,7 @@ export class WorkflowEngine {
 
     const token = await this.tokenRepository.findByProcessId(processId);
     if (!token) {
-      throw new Error(`Token not found for process: ${processId}`);
+      return { status: "WAITING", currentNodeId: process.currentNodeId ?? "" };
     }
 
     const actor = createActor(
@@ -93,7 +121,9 @@ export class WorkflowEngine {
     if (state === "Idle") {
       actor.send({ type: "START" });
     } else if (state === "Waiting") {
-      actor.send({ type: "TASK_COMPLETED" });
+      return { status: "WAITING", currentNodeId: token.currentStep };
+    } else if (state === "Completed") {
+      return { status: "COMPLETED", currentNodeId: "" };
     }
 
     return this.runInterpretLoop(process, token, workflow.definition, actor);
@@ -106,6 +136,7 @@ export class WorkflowEngine {
     for (const process of running) {
       let result = await this.executeProcess(process.id);
       while (result.status === "WAITING") {
+        await this.completeTask(process.id);
         result = await this.executeProcess(process.id);
       }
     }
