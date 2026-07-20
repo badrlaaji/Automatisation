@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { createActor } from "xstate";
 import type { Graph } from "./graph";
-import { bpmnEngineMachine } from "./machine";
+import { bpmnEngineMachine, getTokens, getWaitpoints } from "./machine";
 
 const simpleGraph: Graph = {
   start: { id: "start", type: "startEvent", next: "approveOrder" },
@@ -10,7 +10,7 @@ const simpleGraph: Graph = {
 };
 
 describe("bpmnEngineMachine", () => {
-  it("starts idle and moves to waiting on the first task", () => {
+  it("starts idle and exposes a waitpoint once the first task blocks it", () => {
     const actor = createActor(bpmnEngineMachine, {
       input: { graph: simpleGraph },
     });
@@ -21,31 +21,35 @@ describe("bpmnEngineMachine", () => {
     actor.send({ type: "START" });
 
     const snapshot = actor.getSnapshot();
-    expect(snapshot.value).toBe("waiting");
-    expect(snapshot.context.waitpoints).toHaveLength(1);
-    expect(snapshot.context.waitpoints[0]).toMatchObject({
+    expect(snapshot.value).toBe("active");
+
+    const waitpoints = getWaitpoints(snapshot);
+    expect(waitpoints).toHaveLength(1);
+    expect(waitpoints[0]).toMatchObject({
       nodeId: "approveOrder",
       type: "task",
     });
-    expect(snapshot.context.tokens).toHaveLength(1);
-    expect(snapshot.context.tokens[0].nodeId).toBe("approveOrder");
+
+    const tokens = getTokens(snapshot);
+    expect(tokens).toHaveLength(1);
+    expect(tokens[0].nodeId).toBe("approveOrder");
   });
 
-  it("completes the workflow once the task is completed", () => {
+  it("completes the workflow once its only token finishes", () => {
     const actor = createActor(bpmnEngineMachine, {
       input: { graph: simpleGraph },
     });
     actor.start();
     actor.send({ type: "START" });
 
-    const tokenId = actor.getSnapshot().context.waitpoints[0].tokenId;
+    const tokenId = getWaitpoints(actor.getSnapshot())[0].tokenId;
     actor.send({ type: "COMPLETE_TASK", tokenId });
 
     const snapshot = actor.getSnapshot();
     expect(snapshot.value).toBe("completed");
-    expect(snapshot.context.tokens).toHaveLength(0);
-    expect(snapshot.context.waitpoints).toHaveLength(0);
     expect(snapshot.status).toBe("done");
+    expect(getTokens(snapshot)).toHaveLength(0);
+    expect(getWaitpoints(snapshot)).toHaveLength(0);
   });
 
   it("ignores COMPLETE_TASK for an unknown tokenId", () => {
@@ -58,8 +62,8 @@ describe("bpmnEngineMachine", () => {
     actor.send({ type: "COMPLETE_TASK", tokenId: "not-a-real-token" });
 
     const snapshot = actor.getSnapshot();
-    expect(snapshot.value).toBe("waiting");
-    expect(snapshot.context.waitpoints).toHaveLength(1);
+    expect(snapshot.value).toBe("active");
+    expect(getWaitpoints(snapshot)).toHaveLength(1);
   });
 
   it("supports sequential multi-task graphs", () => {
@@ -74,17 +78,28 @@ describe("bpmnEngineMachine", () => {
     actor.start();
     actor.send({ type: "START" });
 
-    expect(actor.getSnapshot().context.waitpoints[0].nodeId).toBe("taskA");
+    expect(getWaitpoints(actor.getSnapshot())[0].nodeId).toBe("taskA");
 
-    const firstTokenId = actor.getSnapshot().context.waitpoints[0].tokenId;
+    const firstTokenId = getWaitpoints(actor.getSnapshot())[0].tokenId;
     actor.send({ type: "COMPLETE_TASK", tokenId: firstTokenId });
 
-    expect(actor.getSnapshot().value).toBe("waiting");
-    expect(actor.getSnapshot().context.waitpoints[0].nodeId).toBe("taskB");
+    expect(actor.getSnapshot().value).toBe("active");
+    expect(getWaitpoints(actor.getSnapshot())[0].nodeId).toBe("taskB");
 
-    const secondTokenId = actor.getSnapshot().context.waitpoints[0].tokenId;
+    const secondTokenId = getWaitpoints(actor.getSnapshot())[0].tokenId;
     actor.send({ type: "COMPLETE_TASK", tokenId: secondTokenId });
 
     expect(actor.getSnapshot().value).toBe("completed");
+  });
+
+  it("keeps the token id stable across the workflow for a single token", () => {
+    const actor = createActor(bpmnEngineMachine, {
+      input: { graph: simpleGraph },
+    });
+    actor.start();
+    actor.send({ type: "START" });
+
+    const tokenId = getWaitpoints(actor.getSnapshot())[0].tokenId;
+    expect(getTokens(actor.getSnapshot())[0].id).toBe(tokenId);
   });
 });

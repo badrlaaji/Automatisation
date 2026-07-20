@@ -7,9 +7,11 @@ export type {
   Token,
   Waitpoint,
 } from "./graph";
-export { runToBlocked } from "./execution";
 export {
   bpmnEngineMachine,
+  getTokens,
+  getWaitpoints,
   type BpmnEngineContext,
   type BpmnEngineEvent,
 } from "./machine";
+export { tokenMachine, type TokenContext, type TokenEvent } from "./token-machine";

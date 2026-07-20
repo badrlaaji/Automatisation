@@ -1,16 +1,17 @@
-import { assign, setup } from "xstate";
+import { assign, sendTo, setup, type ActorRefFrom, type SnapshotFrom } from "xstate";
 import type { Graph, Token, Waitpoint } from "./graph";
-import { runToBlocked } from "./execution";
+import { tokenMachine } from "./token-machine";
 
 export interface BpmnEngineContext {
   graph: Graph;
-  tokens: Token[];
-  waitpoints: Waitpoint[];
+  tokenRefs: Record<string, ActorRefFrom<typeof tokenMachine>>;
 }
 
 export type BpmnEngineEvent =
   | { type: "START" }
-  | { type: "COMPLETE_TASK"; tokenId: string };
+  | { type: "COMPLETE_TASK"; tokenId: string }
+  /** Internal: sent by a token actor when it reaches an endEvent. */
+  | { type: "TOKEN_DONE"; tokenId: string };
 
 let tokenCounter = 0;
 function nextTokenId(): string {
@@ -34,77 +35,101 @@ export const bpmnEngineMachine = setup({
     events: {} as BpmnEngineEvent,
     input: {} as { graph: Graph },
   },
-  actions: {
-    spawnInitialToken: assign(({ context }) => ({
-      tokens: [
-        ...context.tokens,
-        { id: nextTokenId(), nodeId: findStartNodeId(context.graph) },
-      ],
-    })),
-    runExecution: assign(({ context }) => {
-      const result = runToBlocked(context.graph, context.tokens);
-      return { tokens: result.tokens, waitpoints: result.waitpoints };
-    }),
-    advanceCompletedTask: assign(({ context, event }) => {
-      if (event.type !== "COMPLETE_TASK") return {};
-
-      const waitpoint = context.waitpoints.find(
-        (wp) => wp.tokenId === event.tokenId,
-      );
-      if (!waitpoint) return {};
-
-      const taskNode = context.graph[waitpoint.nodeId];
-      if (!taskNode || taskNode.type !== "task") return {};
-
-      return {
-        tokens: context.tokens.map((token) =>
-          token.id === event.tokenId
-            ? { ...token, nodeId: taskNode.next }
-            : token,
-        ),
-        waitpoints: context.waitpoints.filter(
-          (wp) => wp.tokenId !== event.tokenId,
-        ),
-      };
-    }),
+  actors: {
+    tokenLogic: tokenMachine,
   },
   guards: {
-    hasWaitpoints: ({ context }) => context.waitpoints.length > 0,
+    tokenExists: ({ context, event }) =>
+      event.type === "COMPLETE_TASK" && event.tokenId in context.tokenRefs,
+    allTokensDone: ({ context }) =>
+      Object.keys(context.tokenRefs).length === 0,
+  },
+  actions: {
+    spawnToken: assign(({ context, spawn }) => {
+      const tokenId = nextTokenId();
+      const ref = spawn("tokenLogic", {
+        id: tokenId,
+        input: {
+          graph: context.graph,
+          nodeId: findStartNodeId(context.graph),
+          tokenId,
+        },
+      });
+      return { tokenRefs: { ...context.tokenRefs, [tokenId]: ref } };
+    }),
+    forwardCompleteTask: sendTo(
+      ({ context, event }) => {
+        if (event.type !== "COMPLETE_TASK") {
+          throw new Error("forwardCompleteTask called with wrong event");
+        }
+        return context.tokenRefs[event.tokenId];
+      },
+      { type: "COMPLETE_TASK" },
+    ),
+    removeTokenRef: assign(({ context, event }) => {
+      if (event.type !== "TOKEN_DONE") return {};
+      const { [event.tokenId]: _removed, ...rest } = context.tokenRefs;
+      return { tokenRefs: rest };
+    }),
   },
 }).createMachine({
   id: "bpmnEngine",
   context: ({ input }) => ({
     graph: input.graph,
-    tokens: [],
-    waitpoints: [],
+    tokenRefs: {},
   }),
   initial: "idle",
   states: {
     idle: {
       on: {
         START: {
-          target: "executing",
-          actions: "spawnInitialToken",
+          target: "active",
+          actions: "spawnToken",
         },
       },
     },
-    executing: {
-      entry: "runExecution",
-      always: [
-        { guard: "hasWaitpoints", target: "waiting" },
-        { target: "completed" },
-      ],
-    },
-    waiting: {
+    active: {
       on: {
         COMPLETE_TASK: {
-          target: "executing",
-          actions: "advanceCompletedTask",
+          guard: "tokenExists",
+          actions: "forwardCompleteTask",
+        },
+        TOKEN_DONE: {
+          actions: "removeTokenRef",
         },
       },
+      always: [{ guard: "allTokensDone", target: "completed" }],
     },
     completed: {
       type: "final",
     },
   },
 });
+
+/** Derives the current waitpoints by reading every waiting token actor's snapshot. */
+export function getWaitpoints(
+  snapshot: SnapshotFrom<typeof bpmnEngineMachine>,
+): Waitpoint[] {
+  const waitpoints: Waitpoint[] = [];
+  for (const [tokenId, ref] of Object.entries(snapshot.context.tokenRefs)) {
+    const tokenSnapshot = ref.getSnapshot();
+    if (tokenSnapshot.value === "waiting") {
+      waitpoints.push({
+        tokenId,
+        nodeId: tokenSnapshot.context.nodeId,
+        type: "task",
+      });
+    }
+  }
+  return waitpoints;
+}
+
+/** Derives the current tokens by reading every active token actor's snapshot. */
+export function getTokens(
+  snapshot: SnapshotFrom<typeof bpmnEngineMachine>,
+): Token[] {
+  return Object.entries(snapshot.context.tokenRefs).map(([tokenId, ref]) => ({
+    id: tokenId,
+    nodeId: ref.getSnapshot().context.nodeId,
+  }));
+}
