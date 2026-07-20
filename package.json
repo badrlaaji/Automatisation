@@ -1,40 +1,19 @@
 {
-  "name": "autov1-workflow-engine",
-  "version": "1.0.0",
-  "description": "Generic workflow engine V1",
-  "main": "./dist/index.js",
-  "types": "./dist/index.d.ts",
-  "exports": {
-    ".": {
-      "types": "./dist/index.d.ts",
-      "require": "./dist/index.js"
-    }
-  },
-  "files": [
-    "dist"
-  ],
+  "name": "xstate-bpmn",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Minimal BPMN workflow engine built with XState v5",
   "scripts": {
-    "build": "tsc -p tsconfig.build.json",
-    "start": "node dist/main.js",
-    "dev": "tsx src/main.ts",
-    "dev:crash": "tsx src/main.ts crash",
-    "dev:resume": "tsx src/main.ts resume",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:coverage": "vitest run --coverage",
-    "db:generate": "prisma generate",
-    "db:push": "prisma db push",
-    "db:reset": "prisma db push --force-reset"
-  },
-  "dependencies": {
-    "@prisma/client": "^6.9.0"
+    "typecheck": "tsc --noEmit"
   },
   "devDependencies": {
-    "@types/node": "^22.15.0",
-    "@vitest/coverage-v8": "^3.2.0",
-    "prisma": "^6.9.0",
-    "tsx": "^4.19.0",
-    "typescript": "^5.8.0",
-    "vitest": "^3.2.0"
+    "typescript": "^5.6.3",
+    "vitest": "^2.1.4"
+  },
+  "dependencies": {
+    "xstate": "^5.18.2"
   }
 }
